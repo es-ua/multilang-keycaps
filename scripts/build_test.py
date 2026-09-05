@@ -232,7 +232,7 @@ def write_bambu_3mf(path: str, keys: list[dict]) -> None:
             z.writestr(name, data)
 
 
-def build_plate(rows: list[list[str]], out_name: str) -> None:
+def build_plate(rows: list[list[str]], out_name: str) -> str:
     by_name = {k[0]: k for k in g.KEYS}
     missing = {n for row in rows for n in row} - set(by_name)
     if missing:
@@ -270,10 +270,13 @@ def build_plate(rows: list[list[str]], out_name: str) -> None:
 
     out = os.path.join(g.OUT_DIR, out_name)
     write_bambu_3mf(out, keys)
+    with open(out.replace(".3mf", "_layout.json"), "w") as fh:  # key -> bed position, for G-code checks
+        json.dump({k["name"]: [k["x"], k["y"]] for k in keys}, fh, indent=1, ensure_ascii=False)
     n_parts = sum(len(k["parts"]) for k in keys)
     face = "face-UP (dish %.1f mm)" % g.DISH_DEPTH if g.DISH_DEPTH > 0 else "face-down (flat)"
     print(f"ok {out}: {len(keys)} keys, {n_parts} parts, plate {plate_w:.1f} x {plate_h:.1f} mm, {face}, "
           f"legend undercut {g.LEG_UNDERCUT:.1f} mm, raise {g.LEG_RAISE:.1f} mm")
+    return out
 
 
 def parse_rows(tokens: list[str]) -> list[list[str]]:
