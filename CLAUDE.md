@@ -4,19 +4,20 @@ Parametric generator for 3D‑printable MX keycaps with multi‑language legends
 (EN / RU / UK / DE), built for multi‑material FDM printing (Bambu Lab H2D + AMS).
 Pure CadQuery, no OpenSCAD.
 
-## Commands
-- `uv sync` — install deps (cadquery, pytest). System font `fonts-dejavu-core` must be present.
-- `uv run keycaps build --test` — 6 test keys (Q, S, ], ', -, Backspace 2u) → `out/`
-- `uv run keycaps build --layout ansi_104` — full set
-- `uv run keycaps build --keys Q W E` — subset
-- `uv run pytest` — geometry tests; `-m "not slow"` skips full‑layout build
-- `uv run python scripts/render.py` — README renders
+## Commands (current state: single-module generator, no `uv`/`keycaps` CLI yet)
+- `python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt` — deps (cadquery, trimesh, pytest).
+- `.venv/bin/python scripts/build_test.py -o name.3mf Q W E / A S D / Z X C` — Bambu project + STLs, `/` = new row;
+  flags `--dish`, `--round`, `--undercut X`, `--raise X`, `--multilang`.
+- `.venv/bin/python scripts/build_alphabet.py [flat|dish|flat_round|dish_round]` — the 36 multilang keys.
+- `.venv/bin/python -m pytest -q tests` — geometry tests.
+- Output: `out/`, `out/dish/`, `out/round/`, `out/dish/round/` (+ `*_layout.json` with key bed positions).
+- The `uv run keycaps build ...` commands from KEYCAPS_TZ.md are the target design, not implemented.
 
 ## Architecture
-- `keycaps/geometry.py` — cap body, MX stem, base/top split
-- `keycaps/legends.py` — text placement, color groups
-- `keycaps/config.py` — `PrintConfig` dataclass (all mm values live here, nowhere else)
-- `layouts/*.json` — layouts as data: `name, width_u, en, ru, uk, de, group`
+- `keycaps_gen.py` — everything geometric: constants at the top, `KEYS` layout list, `cap_body`, `legends`, `build_key`.
+- `scripts/build_test.py` — plate layout, mesh cleaning, Bambu 3MF writer, project settings from `templates/`.
+- `scripts/build_alphabet.py` — the 36-key set in all variants.
+- Planned (KEYCAPS_TZ.md): `keycaps/geometry.py`, `legends.py`, `config.py`, `layouts/*.json`.
 - Per key export: `_base` (clear PETG), `_top` (black PETG‑CF), `_legA` (translucent blue PETG),
   `_legB` (translucent pink PETG), plus one multi‑part 3MF.
 

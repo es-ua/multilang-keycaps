@@ -95,3 +95,21 @@ def test_pairs_keep_gap():
     for name in ("O", "W", "A", "Q"):
         _, _, legA, legB = g.build_key(*KEY[name])
         assert bb(legA).ymin - bb(legB).ymax >= g.LEG_GAP - TOL
+
+
+def test_rounded_variant_builds(monkeypatch):
+    monkeypatch.setattr(g, "EDGE_ROUND", 2.0)
+    monkeypatch.setattr(g, "TOP_ROUND", 1.0)
+    monkeypatch.setattr(g, "DISH_DEPTH", 0.6)
+    for name in ("S", "backslash"):
+        base, top, legA, legB = g.build_key(*KEY[name])
+        full = bb(base.union(top))
+        w = KEY[name][1] * g.UNIT - g.GAP
+        assert abs(full.xlen - w) < TOL and abs(full.ylen - 18.0) < TOL and abs(full.zlen - 9.0) < TOL
+        assert base.val().isValid() and top.val().isValid()
+        for leg in (legA, legB):
+            assert top.intersect(leg).val().Volume() < 1e-6
+    # corner is rounded: nothing of a 1u cap at the sharp corner position
+    base, top, _, _ = g.build_key(*KEY["S"])
+    probe = cq.Workplane("XY").box(0.3, 0.3, 20, centered=(True, True, False)).translate((8.85, 8.85, 0))
+    assert top.union(base).intersect(probe).val().Volume() < 1e-6

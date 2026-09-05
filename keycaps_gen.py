@@ -27,7 +27,9 @@ HEIGHT    = 9.0          # высота кейкапа (плоский XDA-по�
 TOP_INSET = 2.0          # сужение верха с каждой стороны (18 -> 14 мм)
 WALL      = 1.4          # толщина стенок
 TOP_THK   = 2.2          # толщина крыши (чёрная часть); 2.2 мм чёрного CF светонепроницаемо
-CHAMFER   = 0.6          # фаска по верхней кромке
+CHAMFER   = 0.6          # фаска по верхней кромке (если TOP_ROUND = 0)
+EDGE_ROUND = 0.0         # радиус скругления четырёх вертикальных углов колпачка (0 = острые), как у GravaStar ~2 мм
+TOP_ROUND  = 0.0         # радиус скругления верхней кромки вместо фаски (0 = фаска CHAMFER)
 
 # MX-стем. CF жёстче — зазор чуть больше обычного.
 STEM_OD   = 5.6          # наружный диаметр стема
@@ -132,7 +134,12 @@ def cap_body(width_u: float):
     outer = (cq.Workplane("XY")
              .rect(w, d).workplane(offset=HEIGHT).rect(tw, td)
              .loft(combine=True))
-    outer = outer.edges(">Z").chamfer(CHAMFER)
+    if EDGE_ROUND > 0:
+        outer = outer.edges("not(<Z or >Z)").fillet(EDGE_ROUND)   # четыре наклонных ребра углов
+    if TOP_ROUND > 0:
+        outer = outer.edges(">Z").fillet(TOP_ROUND)
+    else:
+        outer = outer.edges(">Z").chamfer(CHAMFER)
 
     # внутренняя полость
     iw, id_ = w - 2 * WALL, d - 2 * WALL
@@ -206,11 +213,12 @@ def dish_cutter(tw: float, td: float):
                 .translate((0, 0, HEIGHT - DISH_DEPTH + R)))
     # сфера через углы площадки внутри фаски (квадрат (td-2·CHAMFER)²), растянута по X под широкие
     # клавиши, чтобы и у них на полной высоте HEIGHT оставались только углы
-    a = td / 2 - CHAMFER
+    rim = TOP_ROUND if TOP_ROUND > 0 else CHAMFER
+    a = td / 2 - rim
     r = a * 2 ** 0.5
     R = (r * r + DISH_DEPTH * DISH_DEPTH) / (2 * DISH_DEPTH)
     sph = cq.Workplane("XY").sphere(R).translate((0, 0, HEIGHT - DISH_DEPTH + R))
-    sx = (tw / 2 - CHAMFER) / a
+    sx = (tw / 2 - rim) / a
     if abs(sx - 1) < 1e-6:
         return sph
     m = cq.Matrix([[sx, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]])

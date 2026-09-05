@@ -9,6 +9,8 @@
                                                                 # face-up these bumps need slicer supports)
     .venv/bin/python scripts/build_test.py --raise 0.4 ...      # legend stands proud of the face (default 0.4 with
                                                                 # --dish, 0 face-down where the face lies on the bed)
+    .venv/bin/python scripts/build_test.py --round ...          # GravaStar-like rounded cap: 2 mm corner fillets,
+                                                                # 1 mm top-edge fillet; output gets _round suffix
 
 In the 3MF every key is ONE object with parts ``_base/_top/_legA/_legB`` and the
 filament slot is already assigned per part (1 clear base, 2 black top, 3 translucent blue
@@ -39,6 +41,7 @@ g.FONT_PATH = os.path.join(ROOT, "fonts", "DejaVuSans-Bold.ttf")
 PLATE_GAP = 3.0  # mm between caps on the bed
 TESS_TOL, TESS_ANG = 0.05, 0.5  # mesh tolerance (mm) and angular tolerance (rad) for STL/3MF export
 DISH = 0.6  # mm, dish depth used by --dish
+ROUND_EDGE, ROUND_TOP = 2.0, 1.0  # mm, fillets used by --round
 BED = (350.0, 320.0)  # Bambu Lab H2D; the plate is centered on the bed
 # Part order matters: where parts overlap, Bambu Studio gives precedence to the part listed FIRST.
 # Legends go before the black top so the slicer never fills a letter with black.
@@ -315,13 +318,19 @@ if __name__ == "__main__":
         g.OUT_DIR = os.path.join(g.OUT_DIR, "dish")  # keep per-key STLs apart from the flat ones
         if out_name:
             out_name = out_name.replace(".3mf", "_dish.3mf")
+    if "--round" in args:
+        args.remove("--round")
+        g.EDGE_ROUND, g.TOP_ROUND = ROUND_EDGE, ROUND_TOP
+        g.OUT_DIR = os.path.join(g.OUT_DIR, "round")
+        if out_name:
+            out_name = out_name.replace(".3mf", "_round.3mf")
     if undercut is not None:
         g.LEG_UNDERCUT = undercut
     if raise_ is None and g.DISH_DEPTH == 0:
         raise_ = 0.0  # face-down: the face must stay flat on the bed
     if raise_ is not None:
         g.LEG_RAISE = raise_
-    suffix = "_dish" if g.DISH_DEPTH > 0 else ""
+    suffix = ("_dish" if g.DISH_DEPTH > 0 else "") + ("_round" if g.EDGE_ROUND > 0 else "")
     if args == ["--multilang"]:
         build_plate(MULTILANG_ROWS, out_name or f"multilang_plate{suffix}.3mf")
     elif args:
