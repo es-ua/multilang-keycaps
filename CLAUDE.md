@@ -7,8 +7,8 @@ Pure CadQuery, no OpenSCAD.
 ## Commands (current state: single-module generator, no `uv`/`keycaps` CLI yet)
 - `python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt` — deps (cadquery, trimesh, pytest).
 - `.venv/bin/python scripts/build_test.py -o name.3mf Q W E / A S D / Z X C` — Bambu project + STLs, `/` = new row;
-  flags `--dish`, `--round`, `--undercut X`, `--raise X`, `--multilang`.
-- `.venv/bin/python scripts/build_alphabet.py [flat|dish|flat_round|dish_round]` — the 36 multilang keys.
+  flags `--dish`, `--round`, `--qwertz`, `--undercut X`, `--raise X`, `--multilang`.
+- `.venv/bin/python scripts/build_alphabet.py flat|dish[_round][_qwertz]` — the 36 multilang keys.
 - `.venv/bin/python -m pytest -q tests` — geometry tests.
 - Output: `out/`, `out/dish/`, `out/round/`, `out/dish/round/` (+ `*_layout.json` with key bed positions).
 - The `uv run keycaps build ...` commands from KEYCAPS_TZ.md are the target design, not implemented.
@@ -38,6 +38,8 @@ Pure CadQuery, no OpenSCAD.
               If EN+RU do not fit vertically with a 1.2 mm gap, both shrink together.
   ```
 - Legend groups: A = EN+DE, B = RU+UK. Groups are data (`group` field), not code.
+- `--qwertz` variant: DE corner gets Z↔Y and `] \ / `` ` ``` → `+ # - ^` via `QWERTZ_DE` in `keycaps_gen.py`;
+  the default QWERTY `KEYS` list is never modified in place.
 
 ## Conventions
 - Python 3.11+, type hints, ruff defaults. Conventional commits.

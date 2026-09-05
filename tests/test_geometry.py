@@ -113,3 +113,18 @@ def test_rounded_variant_builds(monkeypatch):
     base, top, _, _ = g.build_key(*KEY["S"])
     probe = cq.Workplane("XY").box(0.3, 0.3, 20, centered=(True, True, False)).translate((8.85, 8.85, 0))
     assert top.union(base).intersect(probe).val().Volume() < 1e-6
+
+
+def test_qwertz_variant_adds_german_legends():
+    keys = {k[0]: k for k in g.qwertz_keys()}
+    assert keys["Z"][5] == "Y" and keys["Y"][5] == "Z"
+    assert keys["rbracket"][5] == "+" and keys["backslash"][5] == "#" and keys["slash"][5] == "-" and keys["grave"][5] == "^"
+    assert keys["quote"][5] == "Ä" and keys["minus"][5] == "ß"  # untouched
+    assert KEY["Z"][5] is None  # the default layout is not modified
+    base, top, legA, legB = g.build_key(*keys["Z"])
+    tw = g.UNIT - g.GAP - 2 * g.TOP_INSET
+    hx = tw / 2 - g.LEG_MARGIN
+    a = bb(legA)
+    assert len(legA.val().Solids()) == 2  # Z (top-left) + Y (top-right, DE)
+    assert abs(a.xmax - hx) < TOL and abs(a.xmin + hx) < TOL
+    assert top.intersect(legA).val().Volume() < 1e-6 and legA.intersect(legB).val().Volume() < 1e-6

@@ -11,6 +11,8 @@
                                                                 # --dish, 0 face-down where the face lies on the bed)
     .venv/bin/python scripts/build_test.py --round ...          # GravaStar-like rounded cap: 2 mm corner fillets,
                                                                 # 1 mm top-edge fillet; output gets _round suffix
+    .venv/bin/python scripts/build_test.py --qwertz ...         # German QWERTZ DE legends (Z<->Y, + # - ^);
+                                                                # output gets _qwertz suffix
 
 In the 3MF every key is ONE object with parts ``_base/_top/_legA/_legB`` and the
 filament slot is already assigned per part (1 clear base, 2 black top, 3 translucent blue
@@ -36,6 +38,7 @@ import trimesh  # noqa: E402
 
 import keycaps_gen as g  # noqa: E402
 
+KEYS_QWERTY = g.KEYS
 g.FONT_PATH = os.path.join(ROOT, "fonts", "DejaVuSans-Bold.ttf")
 
 PLATE_GAP = 3.0  # mm between caps on the bed
@@ -324,13 +327,20 @@ if __name__ == "__main__":
         g.OUT_DIR = os.path.join(g.OUT_DIR, "round")
         if out_name:
             out_name = out_name.replace(".3mf", "_round.3mf")
+    if "--qwertz" in args:
+        args.remove("--qwertz")
+        g.KEYS = g.qwertz_keys()
+        g.OUT_DIR = os.path.join(g.OUT_DIR, "qwertz")
+        if out_name:
+            out_name = out_name.replace(".3mf", "_qwertz.3mf")
     if undercut is not None:
         g.LEG_UNDERCUT = undercut
     if raise_ is None and g.DISH_DEPTH == 0:
         raise_ = 0.0  # face-down: the face must stay flat on the bed
     if raise_ is not None:
         g.LEG_RAISE = raise_
-    suffix = ("_dish" if g.DISH_DEPTH > 0 else "") + ("_round" if g.EDGE_ROUND > 0 else "")
+    suffix = (("_dish" if g.DISH_DEPTH > 0 else "") + ("_round" if g.EDGE_ROUND > 0 else "")
+              + ("_qwertz" if g.KEYS is not KEYS_QWERTY else ""))
     if args == ["--multilang"]:
         build_plate(MULTILANG_ROWS, out_name or f"multilang_plate{suffix}.3mf")
     elif args:

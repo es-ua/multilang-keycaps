@@ -54,6 +54,10 @@ colours. Translucent parts are set to 100 % infill so the light path has no patt
 If a pair does not fit with a 1.2 mm gap, both letters shrink together. Font: DejaVu Sans Bold
 (bundled in `fonts/`, it has Cyrillic and the ⌫⇥⏎⇧ glyphs).
 
+**German QWERTZ** (`--qwertz`, or a `_qwertz` variant of `build_alphabet.py`): the DE corner also
+gets what actually moves when you switch to a German layout, on top of Ü Ö Ä ß:
+`Z`→Y, `Y`→Z, `]`→+, `\`→#, `/`→-, `` ` ``→^. The acute on `=` is skipped, at 3.2 mm it is a dot.
+
 ### Three cap variants, pick after a test print
 
 | Variant | Flag | Top | Print orientation | Legends |
@@ -86,8 +90,10 @@ Output goes to `out/` (flat), `out/dish/`, `out/round/`, `out/dish/round/`. Next
 there is a `*_layout.json` with the bed position of every key.
 
 `scripts/build_test.py` options: `/` starts a new row, `-o name.3mf`, `--dish`, `--round`,
-`--undercut 0.6` (bump below the ceiling), `--raise 0.4` (letters proud of the face, dish only by
-default), `--multilang` (same 36‑key set as `build_alphabet.py`).
+`--qwertz`, `--undercut 0.6` (bump below the ceiling), `--raise 0.4` (letters proud of the face,
+dish only by default), `--multilang` (same 36‑key set as `build_alphabet.py`).
+`build_alphabet.py` takes variant names: `flat`, `dish`, optionally `_round` and/or `_qwertz`
+(`dish_round_qwertz`). Every variant lands in its own sub‑folder of `out/`, nothing is overwritten.
 
 ## Printing on the H2D
 

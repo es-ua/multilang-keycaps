@@ -124,6 +124,19 @@ KEYS = [
 
 TEST_SET = ["Q", "S", "rbracket", "quote", "minus", "backspace"]
 
+# Немецкая QWERTZ: что стоит на этих клавишах при переключении на DE (сверх Ü Ö Ä ß, которые уже в KEYS).
+# Акут ´ на клавише "=" не печатаем: при 3.2 мм это просто точка.
+QWERTZ_DE = {"Z": "Y", "Y": "Z", "rbracket": "+", "backslash": "#", "slash": "-", "grave": "^"}
+
+
+def qwertz_keys(keys=None):
+    """Копия раскладки с DE-легендами немецкой QWERTZ (Z↔Y и знаки на ] \ / `)."""
+    out = []
+    for k in keys or KEYS:
+        name, w, en, ru, uk, de = k
+        out.append((name, w, en, ru, uk, QWERTZ_DE.get(name, de)))
+    return out
+
 
 # ---------- Геометрия ----------
 def cap_body(width_u: float):
