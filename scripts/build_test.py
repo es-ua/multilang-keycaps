@@ -3,15 +3,24 @@
     .venv/bin/python scripts/build_test.py               # 6-key test set -> out/test_plate.3mf
     .venv/bin/python scripts/build_test.py --multilang   # every key with RU/UK/DE legend -> out/multilang_plate.3mf
     .venv/bin/python scripts/build_test.py Q W E         # any keys from keycaps_gen.KEYS -> out/custom_plate.3mf
+    .venv/bin/python scripts/build_test.py -o qwe.3mf Q W E / A S D / Z X C   # "/" starts a new row
+    .venv/bin/python scripts/build_test.py --dish ...    # concave (0.6 mm) top, laid FACE-UP; output gets _dish suffix
+    .venv/bin/python scripts/build_test.py --undercut 0.3 ...   # legend bump below the cavity ceiling (default 0.6;
+                                                                # face-up these bumps need slicer supports)
+    .venv/bin/python scripts/build_test.py --raise 0.4 ...      # legend stands proud of the face (default 0.4 with
+                                                                # --dish, 0 face-down where the face lies on the bed)
 
 In the 3MF every key is ONE object with parts ``_base/_top/_legA/_legB`` and the
-filament slot is already assigned per part (1 base, 2 top, 3 legA, 4 legB), so Bambu
-Studio opens it ready to slice. Per-key STLs are written alongside.
+filament slot is already assigned per part (1 clear base, 2 black top, 3 translucent blue
+legA, 4 translucent pink legB), so Bambu Studio opens it ready to slice. Per-key STLs are written alongside.
 
 Font: fonts/DejaVuSans-Bold.ttf (Cyrillic + ⌫⇥⏎⇧ glyphs). Interim helper until
 the ``keycaps`` package / ``keycaps build`` CLI from KEYCAPS_TZ.md exists.
 """
+import json
 import os
+
+import cadquery as cq
 import sys
 import uuid
 import zipfile
@@ -20,16 +29,39 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
+import numpy as np  # noqa: E402
+import trimesh  # noqa: E402
+
 import keycaps_gen as g  # noqa: E402
 
 g.FONT_PATH = os.path.join(ROOT, "fonts", "DejaVuSans-Bold.ttf")
 
 PLATE_GAP = 3.0  # mm between caps on the bed
+TESS_TOL, TESS_ANG = 0.05, 0.5  # mesh tolerance (mm) and angular tolerance (rad) for STL/3MF export
+DISH = 0.6  # mm, dish depth used by --dish
 BED = (350.0, 320.0)  # Bambu Lab H2D; the plate is centered on the bed
-PARTS = ("base", "top", "legA", "legB")
-FILAMENT = {"base": 1, "top": 2, "legA": 3, "legB": 4}  # AMS slot per part
+# Part order matters: where parts overlap, Bambu Studio gives precedence to the part listed FIRST.
+# Legends go before the black top so the slicer never fills a letter with black.
+PARTS = ("base", "legA", "legB", "top")
+SLOTS = ("base", "top", "legA", "legB")  # filament slot order: 1 clear, 2 black, 3 blue, 4 pink
+FILAMENT = {name: i + 1 for i, name in enumerate(SLOTS)}  # AMS slot per part
+COLOURS = {"base": "#E6E6E6", "top": "#202020", "legA": "#7FC8FF", "legB": "#FF8AC8"}  # clear, black, blue, pink
+# Which filament of the template each slot clones (values + preset id): all PETG.
+# Template slot 0 = "Bambu PETG Translucent", slot 2 = "Bambu PETG Basic".
+TEMPLATE_SLOT = {"base": 0, "top": 2, "legA": 0, "legB": 0}
+# Per-part slicer overrides (Bambu model_settings.config keys). Translucent parts print solid so the
+# light path has no infill pattern inside.
+FLUSH_DEFAULT = "300"  # mm³ purge between two different translucent colours; "Re-calculate" in Studio refines it
+PART_SETTINGS = {
+    "base": {"sparse_infill_density": "100%"},
+    "legA": {"sparse_infill_density": "100%"},
+    "legB": {"sparse_infill_density": "100%"},
+}
 # H2D dual nozzle: filament -> extruder (1 left, 2 right). PETG + PETG-CF left, white/red right.
-FILAMENT_MAPS = "1 1 2 2"
+NOZZLE = {"base": 1, "top": 1, "legA": 2, "legB": 2}
+# Full Bambu Studio project config (printer/process/filament presets) so the 3MF opens as an
+# H2D project instead of "invalid config, load geometry only". Slots 1-4 are re-coloured.
+PROJECT_TEMPLATE = os.path.join(ROOT, "templates", "h2d_project_settings.config")
 
 # Keyboard-like rows for the multilang set (grave/minus tucked onto the home row).
 MULTILANG_ROWS = [
@@ -56,9 +88,72 @@ def _mesh_xml(obj_id: int, verts, tris) -> str:
     return "\n".join(out)
 
 
+def project_settings() -> tuple[str, str]:
+    """Return (project_settings.config JSON, plate filament_maps) built from the template.
+
+    The template has N filaments (some PLA). Rebuild every per-filament array so the project has
+    exactly len(PARTS) slots, each a clone of a PETG filament from the template (TEMPLATE_SLOT).
+    """
+    cfg = json.load(open(PROJECT_TEMPLATE))
+    n = len(cfg["filament_colour"])
+    idx = [TEMPLATE_SLOT[p] for p in SLOTS]
+    m = len(idx)
+    for key, v in list(cfg.items()):
+        if not isinstance(v, list) or key == "different_settings_to_system":
+            continue
+        if len(v) == n:                       # one value per filament
+            cfg[key] = [v[i] for i in idx]
+        elif len(v) == 2 * n:                 # per filament × 2 extruders
+            cfg[key] = [v[2 * i + e] for i in idx for e in range(2)]
+        elif len(v) == 4 * n:                 # per filament × 4 (AMS drying tables)
+            cfg[key] = [v[4 * i + e] for i in idx for e in range(4)]
+        elif len(v) == 2 * n * n:             # flush volume matrix, one n×n block per extruder
+            new = []
+            for e in range(2):
+                for ia, a in enumerate(idx):
+                    for ib, b in enumerate(idx):
+                        val = v[e * n * n + a * n + b]
+                        if ia != ib and float(val) == 0:
+                            val = FLUSH_DEFAULT  # slots cloned from the same template filament: never 0
+                        new.append(val)
+            cfg[key] = new
+    cfg["filament_self_index"] = [str(i + 1) for i in range(m) for _ in range(2)]
+    cfg["different_settings_to_system"] = [""] * (m + 2)  # print + filaments + printer
+    cfg["filament_colour"] = [COLOURS[p] for p in SLOTS]
+    fmap = [str(NOZZLE[p]) for p in SLOTS]
+    cfg["filament_map"] = fmap
+    cfg["filament_map_mode"] = "Manual"
+    # no slicer supports baked into the project; the user decides in Bambu Studio
+    cfg["enable_support"] = "0"
+    # Bambu Studio 2.8 bug: with the default "resolution" (0.012 mm contour simplification) the slicer
+    # drops multi-part pockets shaped like curved glyphs (S, C, O, Q, Ф) and fills them with the top
+    # part's filament. resolution = 0 disables the simplification; verified on the sliced G-code.
+    cfg["resolution"] = "0"
+    cfg["different_settings_to_system"] = ["" if v == "enable_support" else v
+                                           for v in cfg.get("different_settings_to_system", [])]
+    return json.dumps(cfg, indent=4, ensure_ascii=False), " ".join(fmap)
+
+
+def clean_mesh(verts, tris):
+    """Make an export mesh slicer-proof: merge duplicate vertices, drop degenerate triangles and
+    force consistent outward winding. CadQuery's tessellation of boolean-cut pockets (letters S, C, Q,
+    Ф) left a few inverted wall triangles; Bambu Studio then lost the whole pocket and filled it black."""
+    m = trimesh.Trimesh(np.array([(v.x, v.y, v.z) for v in verts]), np.array(tris, dtype=np.int64), process=True)
+    m.update_faces(m.nondegenerate_faces())
+    m.remove_unreferenced_vertices()
+    trimesh.repair.fix_winding(m)
+    trimesh.repair.fix_normals(m)
+    if not m.is_watertight:
+        trimesh.repair.fill_holes(m)
+    V = [cq.Vector(*row) for row in m.vertices]
+    T = [tuple(int(i) for i in f) for f in m.faces]
+    return V, T
+
+
 def write_bambu_3mf(path: str, keys: list[dict]) -> None:
     """keys: [{name, x, y, parts: [(suffix, verts, tris), ...]}] with x/y in bed coords."""
     files: dict[str, str] = {}
+    files["Metadata/project_settings.config"], filament_maps = project_settings()
     next_id = 1
     model_objects, build_items, rels, config_objects, instances = [], [], [], [], []
 
@@ -92,7 +187,8 @@ def write_bambu_3mf(path: str, keys: list[dict]) -> None:
             f'      <metadata key="name" value="{key["name"]}_{suffix}"/>\n'
             f'      <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>\n'
             f'      <metadata key="extruder" value="{FILAMENT[suffix]}"/>\n'
-            f'      <mesh_stat face_count="{n}" edges_fixed="0" degenerate_facets="0" '
+            + "".join(f'      <metadata key="{k}" value="{v}"/>\n' for k, v in PART_SETTINGS.get(suffix, {}).items())
+            + f'      <mesh_stat face_count="{n}" edges_fixed="0" degenerate_facets="0" '
             f'facets_removed="0" facets_reversed="0" backwards_edges="0"/>\n'
             f"    </part>" for pid, suffix, n in part_ids)
         config_objects.append(f'  <object id="{obj_id}">\n'
@@ -119,7 +215,7 @@ def write_bambu_3mf(path: str, keys: list[dict]) -> None:
         '    <metadata key="plater_name" value="keycaps"/>\n'
         '    <metadata key="locked" value="false"/>\n'
         '    <metadata key="filament_map_mode" value="Manual"/>\n'
-        f'    <metadata key="filament_maps" value="{FILAMENT_MAPS}"/>\n'
+        f'    <metadata key="filament_maps" value="{filament_maps}"/>\n'
         + "\n".join(instances) + "\n  </plate>\n</config>\n")
     files["_rels/.rels"] = (
         XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n'
@@ -154,31 +250,78 @@ def build_plate(rows: list[list[str]], out_name: str) -> None:
         x = x0
         for name in row:
             k = by_name[name]
-            shapes = g.build_key(*k)
-            g.export(name, *shapes)
+            shapes = dict(zip(("base", "top", "legA", "legB"), g.build_key(*k)))
+            g.export(name, *(shapes[n] for n in ("base", "top", "legA", "legB")))
             w = k[1] * g.UNIT - g.GAP
             cx = x + w / 2
             x += w + PLATE_GAP
             parts = []
-            for suffix, shape in zip(PARTS, shapes):
+            for suffix in PARTS:
+                shape = shapes[suffix]
                 if shape is None:
                     continue
-                # face-down: flip about X so the legend face sits on z=0; key stays centered at origin
-                s = shape.rotate((0, 0, 0), (1, 0, 0), 180).translate((0, 0, g.HEIGHT))
-                parts.append((suffix, *s.val().tessellate(0.01, 0.1)))
+                if g.DISH_DEPTH > 0:
+                    s = shape  # dished caps print face-up: stem down, dish on top
+                else:
+                    # face-down: flip about X so the legend face sits on z=0; key stays centered at origin
+                    s = shape.rotate((0, 0, 0), (1, 0, 0), 180).translate((0, 0, g.HEIGHT))
+                parts.append((suffix, *clean_mesh(*s.val().tessellate(TESS_TOL, TESS_ANG))))
             keys.append({"name": name, "x": cx, "y": cy, "parts": parts})
 
     out = os.path.join(g.OUT_DIR, out_name)
     write_bambu_3mf(out, keys)
     n_parts = sum(len(k["parts"]) for k in keys)
-    print(f"ok {out}: {len(keys)} keys, {n_parts} parts, plate {plate_w:.1f} x {plate_h:.1f} mm")
+    face = "face-UP (dish %.1f mm)" % g.DISH_DEPTH if g.DISH_DEPTH > 0 else "face-down (flat)"
+    print(f"ok {out}: {len(keys)} keys, {n_parts} parts, plate {plate_w:.1f} x {plate_h:.1f} mm, {face}, "
+          f"legend undercut {g.LEG_UNDERCUT:.1f} mm, raise {g.LEG_RAISE:.1f} mm")
+
+
+def parse_rows(tokens: list[str]) -> list[list[str]]:
+    rows, cur = [], []
+    for t in tokens:
+        if t == "/":
+            if cur:
+                rows.append(cur)
+            cur = []
+        else:
+            cur.append(t)
+    if cur:
+        rows.append(cur)
+    return rows
 
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    out_name = None
+    if "-o" in args:
+        i = args.index("-o")
+        out_name = args[i + 1]
+        del args[i:i + 2]
+    undercut = raise_ = None
+    if "--undercut" in args:
+        i = args.index("--undercut")
+        undercut = float(args[i + 1])
+        del args[i:i + 2]
+    if "--raise" in args:
+        i = args.index("--raise")
+        raise_ = float(args[i + 1])
+        del args[i:i + 2]
+    if "--dish" in args:
+        args.remove("--dish")
+        g.DISH_DEPTH = DISH
+        g.OUT_DIR = os.path.join(g.OUT_DIR, "dish")  # keep per-key STLs apart from the flat ones
+        if out_name:
+            out_name = out_name.replace(".3mf", "_dish.3mf")
+    if undercut is not None:
+        g.LEG_UNDERCUT = undercut
+    if raise_ is None and g.DISH_DEPTH == 0:
+        raise_ = 0.0  # face-down: the face must stay flat on the bed
+    if raise_ is not None:
+        g.LEG_RAISE = raise_
+    suffix = "_dish" if g.DISH_DEPTH > 0 else ""
     if args == ["--multilang"]:
-        build_plate(MULTILANG_ROWS, "multilang_plate.3mf")
+        build_plate(MULTILANG_ROWS, out_name or f"multilang_plate{suffix}.3mf")
     elif args:
-        build_plate([args], "custom_plate.3mf")
+        build_plate(parse_rows(args), out_name or f"custom_plate{suffix}.3mf")
     else:
-        build_plate([g.TEST_SET], "test_plate.3mf")
+        build_plate([g.TEST_SET], out_name or f"test_plate{suffix}.3mf")
