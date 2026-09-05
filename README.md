@@ -1,2 +1,1 @@
-# multilang-keycaps
-Parametric CadQuery generator for 3D‑printable MX keycaps with multi‑language legends (EN/RU/UK/DE). Multi‑material FDM ready: translucent base, black top, two‑color legends. Built for Bambu Lab H2D/AMS, tested on GravaStar Mercury keyboards.
+Off‑the‑shelf keycap sets rarely cover more than two languages, and none do Ukrainian + Russian + German on a single QWERTY set. multilang‑keycaps generates every keycap of a full layout as separate bodies for multi‑material printing: a translucent base that lets RGB through, an opaque black top, and legends split into color groups — Latin/German in white, Cyrillic in red. Layouts and color grouping are plain JSON, so you can adapt it to any language pair, any color scheme, or any MX‑compatible board.
