@@ -7,8 +7,8 @@ Pure CadQuery, no OpenSCAD.
 ## Commands (current state: single-module generator, no `uv`/`keycaps` CLI yet)
 - `python3.11 -m venv .venv && .venv/bin/pip install -r requirements.txt` — deps (cadquery, trimesh, pytest).
 - `.venv/bin/python scripts/build_test.py -o name.3mf Q W E / A S D / Z X C` — Bambu project + STLs, `/` = new row;
-  flags `--dish`, `--round`, `--qwertz`, `--undercut X`, `--raise X`, `--multilang`.
-- `.venv/bin/python scripts/build_alphabet.py flat|dish[_round][_qwertz]` — the 36 multilang keys.
+  flags `--dish`, `--round`, `--qwertz`, `--emboss`, `--undercut X`, `--raise X`, `--multilang`.
+- `.venv/bin/python scripts/build_alphabet.py flat|dish[_round][_qwertz][_emboss]` — the 36 multilang keys.
 - `.venv/bin/python -m pytest -q tests` — geometry tests.
 - Output: `out/`, `out/dish/`, `out/round/`, `out/dish/round/` (+ `*_layout.json` with key bed positions).
 - The `uv run keycaps build ...` commands from KEYCAPS_TZ.md are the target design, not implemented.
@@ -30,6 +30,9 @@ Pure CadQuery, no OpenSCAD.
 - 1u = 18.0 × 18.0 × 9.0 mm, top plate 14 × 14 mm, top thickness 2.2 mm.
 - Legends are shine‑through: full‑depth columns through the black top (cavity ceiling → face),
   printed in translucent PETG (`LEG_THROUGH = True`); `False` gives the old 0.45 mm inlay.
+- `--emboss` variant: opaque white/red PETG letters, 0.4 mm relief above the face + 0.4 mm anchor
+  pocket in the top (`LEG_EMBOSS`, `LEG_EMBOSS_ANCHOR`); always face‑up; colours/presets switched
+  by `set_emboss()` in `scripts/build_test.py`.
 - Stem clearance is tuned for PETG‑CF (+0.10 mm cross length, +0.05 mm cross thickness).
 - Legend layout on a key (big letters in opposite corners, small ones in the other two):
   ```

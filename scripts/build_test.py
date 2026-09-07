@@ -13,6 +13,8 @@
                                                                 # 1 mm top-edge fillet; output gets _round suffix
     .venv/bin/python scripts/build_test.py --qwertz ...         # German QWERTZ DE legends (Z<->Y, + # - ^);
                                                                 # output gets _qwertz suffix
+    .venv/bin/python scripts/build_test.py --emboss ...         # opaque white/red letters embossed 0.4 mm on top of
+                                                                # the face (no shine-through), always face-up; _emboss
 
 In the 3MF every key is ONE object with parts ``_base/_top/_legA/_legB`` and the
 filament slot is already assigned per part (1 clear base, 2 black top, 3 translucent blue
@@ -45,6 +47,8 @@ PLATE_GAP = 3.0  # mm between caps on the bed
 TESS_TOL, TESS_ANG = 0.05, 0.5  # mesh tolerance (mm) and angular tolerance (rad) for STL/3MF export
 DISH = 0.6  # mm, dish depth used by --dish
 ROUND_EDGE, ROUND_TOP = 2.0, 1.0  # mm, fillets used by --round
+EMBOSS = 0.4  # mm, relief height used by --emboss
+EMBOSS_COLOURS = {"legA": "#FFFFFF", "legB": "#E02020"}  # opaque white / red PETG Basic
 BED = (350.0, 320.0)  # Bambu Lab H2D; the plate is centered on the bed
 # Part order matters: where parts overlap, Bambu Studio gives precedence to the part listed FIRST.
 # Legends go before the black top so the slicer never fills a letter with black.
@@ -138,6 +142,18 @@ def project_settings() -> tuple[str, str]:
     cfg["different_settings_to_system"] = ["" if v == "enable_support" else v
                                            for v in cfg.get("different_settings_to_system", [])]
     return json.dumps(cfg, indent=4, ensure_ascii=False), " ".join(fmap)
+
+
+def set_emboss() -> None:
+    """Switch to opaque embossed legends: relief on top of the face, no pocket, white/red PETG Basic."""
+    g.LEG_EMBOSS = EMBOSS
+    g.LEG_THROUGH = False
+    g.LEG_RAISE = 0.0
+    g.LEG_UNDERCUT = 0.0
+    COLOURS.update(EMBOSS_COLOURS)
+    TEMPLATE_SLOT["legA"] = TEMPLATE_SLOT["legB"] = TEMPLATE_SLOT["top"]  # PETG Basic preset values
+    PART_SETTINGS.pop("legA", None)
+    PART_SETTINGS.pop("legB", None)
 
 
 def clean_mesh(verts, tris):
@@ -266,8 +282,8 @@ def build_plate(rows: list[list[str]], out_name: str) -> str:
                 shape = shapes[suffix]
                 if shape is None:
                     continue
-                if g.DISH_DEPTH > 0:
-                    s = shape  # dished caps print face-up: stem down, dish on top
+                if g.DISH_DEPTH > 0 or g.LEG_EMBOSS > 0:
+                    s = shape  # dished or embossed caps print face-up: stem down, face on top
                 else:
                     # face-down: flip about X so the legend face sits on z=0; key stays centered at origin
                     s = shape.rotate((0, 0, 0), (1, 0, 0), 180).translate((0, 0, g.HEIGHT))
@@ -279,9 +295,11 @@ def build_plate(rows: list[list[str]], out_name: str) -> str:
     with open(out.replace(".3mf", "_layout.json"), "w") as fh:  # key -> bed position, for G-code checks
         json.dump({k["name"]: [k["x"], k["y"]] for k in keys}, fh, indent=1, ensure_ascii=False)
     n_parts = sum(len(k["parts"]) for k in keys)
-    face = "face-UP (dish %.1f mm)" % g.DISH_DEPTH if g.DISH_DEPTH > 0 else "face-down (flat)"
-    print(f"ok {out}: {len(keys)} keys, {n_parts} parts, plate {plate_w:.1f} x {plate_h:.1f} mm, {face}, "
-          f"legend undercut {g.LEG_UNDERCUT:.1f} mm, raise {g.LEG_RAISE:.1f} mm")
+    face = ("face-UP (dish %.1f mm)" % g.DISH_DEPTH if g.DISH_DEPTH > 0
+            else "face-UP (flat, embossed)" if g.LEG_EMBOSS > 0 else "face-down (flat)")
+    legs = (f"embossed {g.LEG_EMBOSS:.1f} mm opaque" if g.LEG_EMBOSS > 0
+            else f"undercut {g.LEG_UNDERCUT:.1f} mm, raise {g.LEG_RAISE:.1f} mm")
+    print(f"ok {out}: {len(keys)} keys, {n_parts} parts, plate {plate_w:.1f} x {plate_h:.1f} mm, {face}, legends {legs}")
     return out
 
 
@@ -333,6 +351,12 @@ if __name__ == "__main__":
         g.OUT_DIR = os.path.join(g.OUT_DIR, "qwertz")
         if out_name:
             out_name = out_name.replace(".3mf", "_qwertz.3mf")
+    if "--emboss" in args:
+        args.remove("--emboss")
+        set_emboss()
+        g.OUT_DIR = os.path.join(g.OUT_DIR, "emboss")
+        if out_name:
+            out_name = out_name.replace(".3mf", "_emboss.3mf")
     if undercut is not None:
         g.LEG_UNDERCUT = undercut
     if raise_ is None and g.DISH_DEPTH == 0:
@@ -340,7 +364,7 @@ if __name__ == "__main__":
     if raise_ is not None:
         g.LEG_RAISE = raise_
     suffix = (("_dish" if g.DISH_DEPTH > 0 else "") + ("_round" if g.EDGE_ROUND > 0 else "")
-              + ("_qwertz" if g.KEYS is not KEYS_QWERTY else ""))
+              + ("_qwertz" if g.KEYS is not KEYS_QWERTY else "") + ("_emboss" if g.LEG_EMBOSS > 0 else ""))
     if args == ["--multilang"]:
         build_plate(MULTILANG_ROWS, out_name or f"multilang_plate{suffix}.3mf")
     elif args:

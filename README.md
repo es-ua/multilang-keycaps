@@ -70,6 +70,11 @@ In every variant the letters also poke 0.6 mm *below* the cavity ceiling as smal
 cap. That kills the coplanar face between letter and ceiling that made slicers render the first
 layer of the letters only partially.
 
+**Opaque embossed legends** (`--emboss`, or a `_emboss` variant): if you do not want shine‑through,
+this mode prints the letters in plain white / red PETG as a 0.4 mm relief standing on the face.
+They are not just glued on top: each letter is also sunk 0.4 mm into the black top, so the black
+walls wrap its base and it cannot be picked off. Always printed face‑up.
+
 ## Quick start
 
 ```bash
@@ -90,10 +95,11 @@ Output goes to `out/` (flat), `out/dish/`, `out/round/`, `out/dish/round/`. Next
 there is a `*_layout.json` with the bed position of every key.
 
 `scripts/build_test.py` options: `/` starts a new row, `-o name.3mf`, `--dish`, `--round`,
-`--qwertz`, `--undercut 0.6` (bump below the ceiling), `--raise 0.4` (letters proud of the face,
-dish only by default), `--multilang` (same 36‑key set as `build_alphabet.py`).
-`build_alphabet.py` takes variant names: `flat`, `dish`, optionally `_round` and/or `_qwertz`
-(`dish_round_qwertz`). Every variant lands in its own sub‑folder of `out/`, nothing is overwritten.
+`--qwertz`, `--emboss`, `--undercut 0.6` (bump below the ceiling), `--raise 0.4` (letters proud of
+the face, dish only by default), `--multilang` (same 36‑key set as `build_alphabet.py`).
+`build_alphabet.py` takes variant names: `flat` or `dish`, optionally `_round`, `_qwertz`, `_emboss`
+(`dish_round_qwertz_emboss`). Every variant lands in its own sub‑folder of `out/`, nothing is
+overwritten.
 
 ## Printing on the H2D
 

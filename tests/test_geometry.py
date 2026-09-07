@@ -128,3 +128,23 @@ def test_qwertz_variant_adds_german_legends():
     assert len(legA.val().Solids()) == 2  # Z (top-left) + Y (top-right, DE)
     assert abs(a.xmax - hx) < TOL and abs(a.xmin + hx) < TOL
     assert top.intersect(legA).val().Volume() < 1e-6 and legA.intersect(legB).val().Volume() < 1e-6
+
+
+@pytest.mark.parametrize("dish", [0.0, 0.6])
+def test_embossed_legends_sit_on_the_face(monkeypatch, dish):
+    monkeypatch.setattr(g, "LEG_EMBOSS", 0.4)
+    monkeypatch.setattr(g, "LEG_THROUGH", False)
+    monkeypatch.setattr(g, "DISH_DEPTH", dish)
+    base, top, legA, legB = g.build_key(*KEY["S"])
+    assert abs(bb(top).zmax - g.HEIGHT) < TOL  # cap height unchanged, relief lives in the legends only
+    for leg in (legA, legB):
+        b = bb(leg)
+        # anchored LEG_EMBOSS_ANCHOR below the face, standing LEG_EMBOSS above it
+        assert b.zmin >= g.HEIGHT - dish - g.LEG_EMBOSS_ANCHOR - TOL
+        assert b.zmax <= g.HEIGHT + 0.4 + TOL and b.zmax > g.HEIGHT - dish + 0.3
+        assert leg.val().Volume() > 0.5
+        assert top.intersect(leg).val().Volume() < 1e-6   # pocket cut, no overlap
+        assert base.intersect(leg).val().Volume() < 1e-6
+        # the anchor is real: part of the legend lies below the face
+        below = leg.intersect(cq.Workplane("XY").box(200, 200, g.HEIGHT - dish, centered=(True, True, False)))
+        assert below.val().Volume() > 0.2
